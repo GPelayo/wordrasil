@@ -1,22 +1,19 @@
-from reddit_grapher.extractor.reddit import SubmissionCommentCollector
-from reddit_grapher.processor.simple import build_wc_matrix
-import tqdm
-
-GAME_NAME = 'nfc_div'
-SUBREDDIT = 'nfl'
-
-#TODO Current, fix progress bar
+from datetime import datetime, timedelta
+from processor.simple import Discussion
+from plotly import offline, graph_objs
 
 
+class CommentChartBuilder:
+    TIMEZONE_OFFSET = 8
 
-with open('{}-{}.txt'.format(GAME_NAME, SUBREDDIT), 'w') as tfile:
-    scc = SubmissionCommentCollector('7vb5tk', ['body', 'created'], tfile)
-    max_comments = 43233
-    with tqdm.tqdm(total=max_comments) as pbar:
-        scc.write_comments(callback=pbar)
+    def build_comment_count_graph(self, timeline: Discussion):
+        timestamp_lst, comment_counts = zip(
+            *[(timestamp, len(comment)) for timestamp, comment in timeline.comment_list.items()])
+        timestamp_lst = list(map(self._convert_timestamp_to_time, timestamp_lst))
+        data = [graph_objs.Scatter(x=timestamp_lst, y=comment_counts)]
+        offline.plot(data, image='png')
 
-with open('{}-{}.txt'.format(GAME_NAME, SUBREDDIT), 'r') as tfile:
-    build_wc_matrix(tfile)
-
-
-# offline.plot([graph_objs.Scatter(x=[1, 2, 3], y=[3, 1, 6])])
+    def _convert_timestamp_to_time(self, timestamp):
+        comment_time = datetime.fromtimestamp(timestamp)
+        tz_comment_time = comment_time + timedelta(hours=self.TIMEZONE_OFFSET)
+        return tz_comment_time
