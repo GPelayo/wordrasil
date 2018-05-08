@@ -1,10 +1,8 @@
-import json
 import nltk
 import re
-import collections
-import datetime
-import tqdm
-import pprint
+import peakutils
+import numpy
+
 
 IGNORE_LIST = nltk.corpus.stopwords.words() + ['nt']
 
@@ -24,6 +22,11 @@ def clean_token_list(token_list):
         if new_word and len(new_word) > 1 and new_word not in IGNORE_LIST:
             new_list.append(new_word)
     return new_list
+
+
+class WordrasilCommentArrays:
+    timestamp_list = []
+    comment_count_list = []
 
 
 class Discussion:
