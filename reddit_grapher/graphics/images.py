@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from processor.simple import Discussion
+from processor.simple import DiscussionOld, Discussion
 from plotly import offline, graph_objs
 import peakutils
 import numpy
@@ -13,9 +13,12 @@ class CommentChartBuilder:
         tz_comment_time = comment_time + timedelta(hours=self.TIMEZONE_OFFSET)
         return tz_comment_time
 
+    def graph(self, timeline):
+        raise NotImplementedError
+
 
 class CommentCountChartBuilder(CommentChartBuilder):
-    def build_comment_count_graph(self, timeline: Discussion):
+    def graph(self, timeline: DiscussionOld):
         timestamp_lst, comment_counts = zip(
             *[(timestamp, len(comment)) for timestamp, comment in timeline.comment_list.items()])
         timestamp_lst = list(map(self._convert_timestamp_to_time, timestamp_lst))
@@ -25,7 +28,7 @@ class CommentCountChartBuilder(CommentChartBuilder):
 
 
 class PeakWordCountGraphBuilder(CommentChartBuilder):
-    def with_peaks_build_comment_count_graph(self, timeline: Discussion):
+    def graph(self, timeline: DiscussionOld):
         timestamp_lst, comment_counts = zip(
             *[(timestamp, len(comment)) for timestamp, comment in timeline.comment_list.items()])
         timestamp_lst = list(map(self._convert_timestamp_to_time, timestamp_lst))
@@ -39,3 +42,28 @@ class PeakWordCountGraphBuilder(CommentChartBuilder):
                                    marker=dict(symbol='cross',
                                                color='rgb(0,255,0)'))]
         offline.plot(data, image='png')
+
+
+class PeakPopularWordsGraphBuilder(CommentChartBuilder):
+    def graph(self, timeline: Discussion):
+        timestamps = timeline.get_timeline_attrib_array('timestamp')
+        comment_counts = timeline.get_timeline_attrib_array('comment_count')
+        peak_timestamps = timeline.get_timeline_attrib_array('timestamp', only_local_maxima=True)
+        peak_comment_counts = timeline.get_timeline_attrib_array('comment_count', only_local_maxima=True)
+        peak_popular_words = timeline.get_timeline_attrib_array('popular_words', only_local_maxima=True)
+
+        prettfied_ppw = ['<br>'.join([f'{i+1}. {wc.word} ({wc.count})' for i, wc in enumerate(wc_list)]) for wc_list in peak_popular_words]
+
+        data = [graph_objs.Scatter(x=timestamps, y=comment_counts, hoverinfo='none'),
+                graph_objs.Scatter(x=peak_timestamps,
+                                   y=peak_comment_counts,
+                                   mode='markers',
+                                   marker=dict(symbol='cross',
+                                               color='rgb(0,255,0)'),
+                                   name='',
+                                   text=prettfied_ppw)]
+        layout = graph_objs.Layout(showlegend=False)
+        fig = graph_objs.Figure(data=data, layout=layout)
+        offline.plot(fig, image='png')
+
+
