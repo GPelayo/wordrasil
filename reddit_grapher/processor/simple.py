@@ -1,18 +1,21 @@
-import json
 import nltk
 import re
-import collections
-import datetime
-import tqdm
-import pprint
+import peakutils
+import numpy
+from datetime import datetime, timedelta
+from collections import Counter
 
-IGNORE_LIST = nltk.corpus.stopwords.words() + ['nt']
+PRONOUNS = "he"
+SPECIAL_IGNORE_WORDS = ["n't", "'s", "..."]
+IGNORE_LIST = nltk.corpus.stopwords.words() + SPECIAL_IGNORE_WORDS
 
 ROOT_COMMENTS_KEY = 'comments'
 CREATED_COMMENTS_KEY = 'created'
 
-TIME_INTERVAL = 30
-CUTOFF_TIME = 400
+TIME_INTERVAL = 20
+CUTOFF_TIME = 600
+
+TIMEZONE_OFFSET = 8
 
 
 def clean_token_list(token_list):
@@ -26,7 +29,7 @@ def clean_token_list(token_list):
     return new_list
 
 
-class Discussion:
+class DiscussionOld:
     earliest_time = -1
     latest_time = 2**31
 
@@ -39,7 +42,6 @@ class Discussion:
     def init_time_ranges(self, data):
         time = [t for t in map(lambda x: x[CREATED_COMMENTS_KEY], data[ROOT_COMMENTS_KEY])]
         self.earliest_time = float(min(time))
-        # self.latest_time = float(max(time))
         self.latest_time = self.earliest_time + CUTOFF_TIME * TIME_INTERVAL
 
     def _build_timeline(self):
@@ -50,59 +52,105 @@ class Discussion:
             if timeline_address > self.latest_time:
                 break
 
+    @property
+    def word_count_local_maximas(self):
+        timestamp_lst, comment_counts = zip(*[(timestamp, len(comment))
+                                              for timestamp, comment in self.comment_list.items()])
+        data_array = numpy.array(comment_counts)
+        return peakutils.indexes(data_array)
 
-# def build_wc_matrix(read_stream):
-#     data = json.load(read_stream)
-#     build_time_array(data)
 
-    # start_index = 0
-    # for c in range(len(comment_data)):
-    #     if float(comment_data[c]['created']) >= earliest_time:
-    #         start_index = c
-    #         break
-    # comment_data = comment_data[start_index:]
-    # interval_end = earliest_time + SMALLEST_INTERVAL
-    #
-    # full_sect_word_list = []
-    # sect_word_list = []
-    # test_time = []
-    # for i, cd in tqdm.tqdm(enumerate(comment_data)):
-    #     if interval_end <= float(cd['created']):
-    #         test_time.append(str(interval_end))
-    #         interval_end += SMALLEST_INTERVAL
-    #         full_sect_word_list.append(sect_word_list)
-    #         sect_word_list = []
-    #
-    #     snt_tkns = nltk.sent_tokenize(cd['body'])
-    #     for snt in snt_tkns:
-    #         sect_word_list += clean_token_list(nltk.word_tokenize(snt))
-    #
-    # interval = 2
-    # full_size = len(full_sect_word_list)
-    # word_list = {}
-    #
-    # for i in tqdm.tqdm(range(full_size)):
-    #     start_offset = i - int(interval/2 * 60/SMALLEST_INTERVAL)
-    #     end_offset = i + int(interval/2 * 60/SMALLEST_INTERVAL)
-    #
-    #     if start_offset < 0:
-    #         start_offset = 0
-    #     if end_offset > full_size - 1:
-    #         end_offset = end_offset
-    #
-    #     interval_list = [word for sect in full_sect_word_list[start_offset:end_offset] for word in sect]
-    #     wrd_cnt_lst = collections.Counter(interval_list)
-    #     for word in wrd_cnt_lst.keys():
-    #         value = wrd_cnt_lst.get(word)
-    #         word_list.setdefault(word, [0]*full_size)[i] = value
-    #
-    # with open('{}-matrix.txt'.format(read_stream.name.split('.')[0]), 'w') as output_file:
-    #         output_file.write("\t" + "\t".join(test_time))
-    #         for word in tqdm.tqdm(word_list.keys()):
-    #             output_file.write("{}\t{}\n".format(word, "\t".join(map(str, word_list[word]))))
-    #
-    # with open('{}-wrdcnt.txt'.format(read_stream.name.split('.')[0]), 'w') as ttl_wrd_cnt_file:
-    #     sorted_wordcount = sorted([(word, sum(word_list[word]))
-    #                                for word in tqdm.tqdm(word_list.keys())], key=lambda x: x[1])
-    #     for w in sorted_wordcount:
-    #         ttl_wrd_cnt_file.write("{}: {}\n".format(w[0], w[1]))
+def convert_timestamp_to_time(timestamp):
+    comment_time = datetime.fromtimestamp(timestamp)
+    tz_comment_time = comment_time + timedelta(hours=TIMEZONE_OFFSET)
+    return tz_comment_time
+
+
+class WordCount:
+    word = None
+    count = None
+
+    def __init__(self, word, count):
+        self.word = word
+        self.count = count
+
+
+class DiscussionInterval:
+    timestamp = -1
+    popular_words = None
+    raw_comment_data = None
+    is_local_maxima = True
+
+    def __init__(self, min_timestamp: float):
+        self.timestamp = convert_timestamp_to_time(min_timestamp)
+        self.raw_comment_data = []
+
+    def add_comment_data(self, comment: dict):
+        self.raw_comment_data.append(comment)
+
+    @property
+    def popular_words(self):
+        tokens = []
+        for cmt in self.raw_comment_data:
+            formatted_words = self.format_words(nltk.word_tokenize(cmt['body']))
+            filtered_tokens = self.filter_words(formatted_words)
+            tokens += filtered_tokens
+
+        return [WordCount(word, count) for word, count in Counter(tokens).most_common(10)]
+
+    @property
+    def comment_count(self) -> int:
+        return len(self.raw_comment_data)
+
+    def __str__(self) -> str:
+        return f"{self.timestamp}: {self.comment_count}"
+
+    @staticmethod
+    def format_words(word_list) -> list:
+        return [w.lower() for w in word_list]
+
+    @staticmethod
+    def filter_words(word_list) -> list:
+        return [w for w in word_list if w not in IGNORE_LIST and len(w) > 1]
+
+
+class Discussion:
+    earliest_time = -1
+    latest_time = 2 ** 31
+
+    def __init__(self, data):
+        self.init_time_ranges(data)
+        self.comments = data
+        self._comment_list = {}
+        self._comment_count_local_maxima_indices = None
+        self._build_timeline()
+
+    def init_time_ranges(self, data):
+        time = [t for t in map(lambda x: x[CREATED_COMMENTS_KEY], data[ROOT_COMMENTS_KEY])]
+        self.earliest_time = float(min(time))
+        self.latest_time = self.earliest_time + CUTOFF_TIME * TIME_INTERVAL
+
+    def get_timeline_attrib_array(self, attribute_name, only_local_maxima=False, as_string=False):
+        res = [getattr(cmt, attribute_name) for cmt in self._comment_list.values()]
+        if only_local_maxima:
+            res = [res[x] for x in self._comment_count_local_maxima_indices]
+
+        if as_string:
+            res = list(map(str, res))
+        return res
+
+    def _build_timeline(self):
+        for comment in self.comments[ROOT_COMMENTS_KEY]:
+            interval_min_timestamp = float(comment[CREATED_COMMENTS_KEY]) // TIME_INTERVAL * TIME_INTERVAL
+            if interval_min_timestamp not in self._comment_list.keys():
+                disc_int = DiscussionInterval(interval_min_timestamp)
+                self._comment_list[interval_min_timestamp] = disc_int
+
+            self._comment_list[interval_min_timestamp].add_comment_data(comment)
+            # TODO: Find more dynamic way to cutoff trivial comment data
+            if interval_min_timestamp > self.latest_time:
+                break
+
+        comments, comment_counts = zip(*[(x, x.comment_count) for x in self._comment_list.values()])
+        data_array = numpy.array(comment_counts)
+        self._comment_count_local_maxima_indices = peakutils.indexes(data_array)
