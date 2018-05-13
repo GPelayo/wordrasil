@@ -79,6 +79,7 @@ class DiscussionInterval:
     timestamp = -1
     raw_comment_data = None
     is_local_maxima = True
+    _word_count_map = None
 
     def __init__(self, min_timestamp: float):
         self.timestamp = convert_timestamp_to_time(min_timestamp)
@@ -87,13 +88,21 @@ class DiscussionInterval:
 
     def process(self):
         self.word_count = sorted(
-            [WordCount(word, count) for word, count in self._get_word_count().items()],
+            [WordCount(word, count) for word, count in self._get_all_word_counts().items()],
             key=lambda x: x.count, reverse=True)
+        self._word_count_map = {wc.word: wc for wc in self.word_count}
+        # pprint.pprint(self._word_count_map)
 
     def add_comment_data(self, comment: dict):
         self.raw_comment_data.append(comment)
 
-    def _get_word_count(self):
+    def get_word_count(self, word):
+        try:
+            return self._word_count_map[word].count
+        except KeyError:
+            return 0
+
+    def _get_all_word_counts(self):
         tokens = []
         for cmt in self.raw_comment_data:
             formatted_words = self.format_words(nltk.word_tokenize(cmt['body']))
@@ -146,6 +155,9 @@ class Discussion:
         if as_string:
             res = list(map(str, res))
         return res
+
+    def get_single_word_count_array(self, word):
+        return [cmt.get_word_count(word)for cmt in self._comment_list.values()]
 
     def _build_timeline(self):
         for comment in self.comments[ROOT_COMMENTS_KEY]:

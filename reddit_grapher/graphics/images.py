@@ -68,3 +68,16 @@ class PeakPopularWordsGraphBuilder(CommentChartBuilder):
         offline.plot(fig, image='png')
 
 
+class SingleWordCountGraphBuilder(CommentChartBuilder):
+    def __init__(self, word_list):
+        self.word_list = word_list
+
+    def graph(self, timeline: Discussion):
+        timestamps = timeline.get_timeline_attrib_array('timestamp')
+        data = []
+        for word in self.word_list:
+            comment_counts = timeline.get_single_word_count_array(word)
+            data.append(graph_objs.Scatter(name=word, x=timestamps, y=comment_counts, hoverinfo='none', mode='line'))
+        layout = graph_objs.Layout()
+        fig = graph_objs.Figure(data=data, layout=layout)
+        offline.plot(fig, image='png')
