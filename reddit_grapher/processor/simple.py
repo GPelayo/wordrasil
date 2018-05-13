@@ -77,26 +77,34 @@ class WordCount:
 
 class DiscussionInterval:
     timestamp = -1
-    popular_words = None
     raw_comment_data = None
     is_local_maxima = True
 
     def __init__(self, min_timestamp: float):
         self.timestamp = convert_timestamp_to_time(min_timestamp)
         self.raw_comment_data = []
+        self.word_count = None
+
+    def process(self):
+        self.word_count = sorted(
+            [WordCount(word, count) for word, count in self._get_word_count().items()],
+            key=lambda x: x.count, reverse=True)
 
     def add_comment_data(self, comment: dict):
         self.raw_comment_data.append(comment)
 
-    @property
-    def popular_words(self):
+    def _get_word_count(self):
         tokens = []
         for cmt in self.raw_comment_data:
             formatted_words = self.format_words(nltk.word_tokenize(cmt['body']))
             filtered_tokens = self.filter_words(formatted_words)
             tokens += filtered_tokens
 
-        return [WordCount(word, count) for word, count in Counter(tokens).most_common(10)]
+        return Counter(tokens)
+
+    @property
+    def popular_words(self, top_n: int =20):
+        return self.word_count[:top_n]
 
     @property
     def comment_count(self) -> int:
@@ -153,4 +161,6 @@ class Discussion:
 
         comments, comment_counts = zip(*[(x, x.comment_count) for x in self._comment_list.values()])
         data_array = numpy.array(comment_counts)
-        self._comment_count_local_maxima_indices = peakutils.indexes(data_array)
+        self._comment_count_local_maxima_indices = peakutils.indexes(data_array, thres=0.1)
+        for ci in self._comment_list.values():
+            ci.process()

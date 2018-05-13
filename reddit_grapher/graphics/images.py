@@ -52,7 +52,8 @@ class PeakPopularWordsGraphBuilder(CommentChartBuilder):
         peak_comment_counts = timeline.get_timeline_attrib_array('comment_count', only_local_maxima=True)
         peak_popular_words = timeline.get_timeline_attrib_array('popular_words', only_local_maxima=True)
 
-        prettfied_ppw = ['<br>'.join([f'{i+1}. {wc.word} ({wc.count})' for i, wc in enumerate(wc_list)]) for wc_list in peak_popular_words]
+        prettified_ppw = ['<br>'.join([f'{i+1}. {wc.word} ({wc.count})'
+                                      for i, wc in enumerate(wc_list)]) for wc_list in peak_popular_words]
 
         data = [graph_objs.Scatter(x=timestamps, y=comment_counts, hoverinfo='none'),
                 graph_objs.Scatter(x=peak_timestamps,
@@ -61,7 +62,7 @@ class PeakPopularWordsGraphBuilder(CommentChartBuilder):
                                    marker=dict(symbol='cross',
                                                color='rgb(0,255,0)'),
                                    name='',
-                                   text=prettfied_ppw)]
+                                   text=prettified_ppw)]
         layout = graph_objs.Layout(showlegend=False)
         fig = graph_objs.Figure(data=data, layout=layout)
         offline.plot(fig, image='png')
