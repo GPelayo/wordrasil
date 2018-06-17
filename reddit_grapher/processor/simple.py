@@ -18,7 +18,7 @@ CUTOFF_TIME = 600
 TIMEZONE_OFFSET = 8
 
 
-def clean_token_list(token_list):
+def clean_token_list(token_list: list) -> list:
     new_list = []
     for tkn in token_list:
         filter_pattern = re.compile("[^a-zA-z]")
@@ -29,38 +29,7 @@ def clean_token_list(token_list):
     return new_list
 
 
-class DiscussionOld:
-    earliest_time = -1
-    latest_time = 2**31
-
-    def __init__(self, data):
-        self.init_time_ranges(data)
-        self.comments = data
-        self.comment_list = {}
-        self._build_timeline()
-
-    def init_time_ranges(self, data):
-        time = [t for t in map(lambda x: x[CREATED_COMMENTS_KEY], data[ROOT_COMMENTS_KEY])]
-        self.earliest_time = float(min(time))
-        self.latest_time = self.earliest_time + CUTOFF_TIME * TIME_INTERVAL
-
-    def _build_timeline(self):
-        for comment in self.comments[ROOT_COMMENTS_KEY]:
-            timeline_address = float(comment[CREATED_COMMENTS_KEY])//TIME_INTERVAL * TIME_INTERVAL
-            self.comment_list.setdefault(timeline_address, []).append(comment)
-            # TODO: Find more dynamic way to cutoff trivial comment data
-            if timeline_address > self.latest_time:
-                break
-
-    @property
-    def word_count_local_maximas(self):
-        timestamp_lst, comment_counts = zip(*[(timestamp, len(comment))
-                                              for timestamp, comment in self.comment_list.items()])
-        data_array = numpy.array(comment_counts)
-        return peakutils.indexes(data_array)
-
-
-def convert_timestamp_to_time(timestamp):
+def convert_timestamp_to_time(timestamp: float) -> datetime:
     comment_time = datetime.fromtimestamp(timestamp)
     tz_comment_time = comment_time + timedelta(hours=TIMEZONE_OFFSET)
     return tz_comment_time
@@ -70,7 +39,7 @@ class WordCount:
     word = None
     count = None
 
-    def __init__(self, word, count):
+    def __init__(self, word: str, count: int):
         self.word = word
         self.count = count
 
@@ -91,12 +60,11 @@ class DiscussionInterval:
             [WordCount(word, count) for word, count in self._get_all_word_counts().items()],
             key=lambda x: x.count, reverse=True)
         self._word_count_map = {wc.word: wc for wc in self.word_count}
-        # pprint.pprint(self._word_count_map)
 
     def add_comment_data(self, comment: dict):
         self.raw_comment_data.append(comment)
 
-    def get_word_count(self, word):
+    def get_word_count(self, word: str) -> int:
         try:
             return self._word_count_map[word].count
         except KeyError:
@@ -135,19 +103,20 @@ class Discussion:
     earliest_time = -1
     latest_time = 2 ** 31
 
-    def __init__(self, data):
+    def __init__(self, data: dict):
         self.init_time_ranges(data)
         self.comments = data
         self._comment_list = {}
         self._comment_count_local_maxima_indices = None
         self._build_timeline()
 
-    def init_time_ranges(self, data):
+    def init_time_ranges(self, data: dict):
         time = [t for t in map(lambda x: x[CREATED_COMMENTS_KEY], data[ROOT_COMMENTS_KEY])]
         self.earliest_time = float(min(time))
         self.latest_time = self.earliest_time + CUTOFF_TIME * TIME_INTERVAL
 
-    def get_timeline_attrib_array(self, attribute_name, only_local_maxima=False, as_string=False):
+    def get_timeline_attrib_array(self, attribute_name: str,
+                                  only_local_maxima: bool=False, as_string: bool=False) -> list:
         res = [getattr(cmt, attribute_name) for cmt in self._comment_list.values()]
         if only_local_maxima:
             res = [res[x] for x in self._comment_count_local_maxima_indices]
@@ -156,7 +125,7 @@ class Discussion:
             res = list(map(str, res))
         return res
 
-    def get_single_word_count_array(self, word):
+    def get_single_word_count_array(self, word: str) -> list:
         return [cmt.get_word_count(word)for cmt in self._comment_list.values()]
 
     def _build_timeline(self):
